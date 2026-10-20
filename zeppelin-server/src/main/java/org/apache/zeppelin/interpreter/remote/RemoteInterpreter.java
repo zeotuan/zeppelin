@@ -116,6 +116,9 @@ public class RemoteInterpreter extends Interpreter {
    * the interpreter process, so that server driven idle reclaim sees the same activity signal.
    * Needed explicitly because {@link #getOrCreateInterpreterProcess()} returns the cached handle
    * without going through the interpreter group once the process exists.
+   *
+   * <p>Only call this once the process is known to be running or a remote call has succeeded:
+   * polling a dead or unreachable process must not keep its group from being reclaimed.
    */
   private void markInterpreterGroupUsed() {
     ManagedInterpreterGroup intpGroup = getInterpreterGroup();
@@ -207,7 +210,6 @@ public class RemoteInterpreter extends Interpreter {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("st:\n{}", st);
     }
-    markInterpreterGroupUsed();
 
     final FormType form = getFormType();
     RemoteInterpreterProcess interpreterProcess = null;
@@ -220,7 +222,10 @@ public class RemoteInterpreter extends Interpreter {
       return new InterpreterResult(InterpreterResult.Code.ERROR,
               "Interpreter process is not running\n" + interpreterProcess.getErrorMessage());
     }
-    return interpreterProcess.callRemoteFunction(client -> {
+    // Marked before the call too, so a group idle past its threshold is not reclaimed while this
+    // paragraph waits for its first progress poll.
+    markInterpreterGroupUsed();
+    InterpreterResult result = interpreterProcess.callRemoteFunction(client -> {
           RemoteInterpreterResult remoteResult = client.interpret(
               sessionId, className, st, convert(context));
           Map<String, Object> remoteConfig = (Map<String, Object>) GSON.fromJson(
@@ -253,7 +258,15 @@ public class RemoteInterpreter extends Interpreter {
           return convert(remoteResult);
         }
     );
+    markInterpreterGroupUsedIfSucceeded(result);
+    return result;
+  }
 
+  private void markInterpreterGroupUsedIfSucceeded(Object remoteResult) {
+    // PooledRemoteClient returns null when no client could be obtained
+    if (remoteResult != null) {
+      markInterpreterGroupUsed();
+    }
   }
 
   @Override
@@ -306,15 +319,16 @@ public class RemoteInterpreter extends Interpreter {
       LOGGER.warn("getProgress is called when RemoterInterpreter is not opened for {}", className);
       return 0;
     }
-    markInterpreterGroupUsed();
     RemoteInterpreterProcess interpreterProcess = null;
     try {
       interpreterProcess = getOrCreateInterpreterProcess();
     } catch (IOException e) {
       throw new InterpreterException(e);
     }
-    return interpreterProcess.callRemoteFunction(client ->
+    Integer progress = interpreterProcess.callRemoteFunction(client ->
             client.getProgress(sessionId, className, convert(context)));
+    markInterpreterGroupUsedIfSucceeded(progress);
+    return progress;
   }
 
 
@@ -340,16 +354,16 @@ public class RemoteInterpreter extends Interpreter {
       LOGGER.warn("getStatus is called when RemoteInterpreter is not opened for {}", className);
       return Job.Status.UNKNOWN.name();
     }
-    markInterpreterGroupUsed();
     RemoteInterpreterProcess interpreterProcess = null;
     try {
       interpreterProcess = getOrCreateInterpreterProcess();
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-    return interpreterProcess.callRemoteFunction(client -> {
-      return client.getStatus(sessionId, jobId);
-    });
+    String status = interpreterProcess.callRemoteFunction(client ->
+        client.getStatus(sessionId, jobId));
+    markInterpreterGroupUsedIfSucceeded(status);
+    return status;
   }
 
 

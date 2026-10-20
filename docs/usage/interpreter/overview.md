@@ -133,7 +133,9 @@ formats as the global one, i.e. a plain number of milliseconds or a unit suffix 
 | `10m` | it is shut down after 10 minutes of idle time, whatever the global value is |
 | `0` | it is never shut down for being idle |
 
-A paragraph that is still running keeps its interpreter alive regardless of the threshold. The check
+A paragraph that is still running keeps its interpreter alive regardless of the threshold, as long
+as the interpreter process answers. Failed or unanswered calls to a dead or unreachable process do
+not count as activity, so such an interpreter is still reclaimed once its threshold passes. The check
 runs every `zeppelin.interpreter.lifecyclemanager.timeout.checkinterval`, which is shared with the
 global behaviour, so an interpreter can be shut down up to one interval after its threshold has
 passed.
