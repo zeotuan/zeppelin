@@ -116,9 +116,6 @@ public class RemoteInterpreter extends Interpreter {
    * the interpreter process, so that server driven idle reclaim sees the same activity signal.
    * Needed explicitly because {@link #getOrCreateInterpreterProcess()} returns the cached handle
    * without going through the interpreter group once the process exists.
-   *
-   * <p>Only call this once the process is known to be running or a remote call has succeeded:
-   * polling a dead or unreachable process must not keep its group from being reclaimed.
    */
   private void markInterpreterGroupUsed() {
     ManagedInterpreterGroup intpGroup = getInterpreterGroup();
@@ -222,8 +219,6 @@ public class RemoteInterpreter extends Interpreter {
       return new InterpreterResult(InterpreterResult.Code.ERROR,
               "Interpreter process is not running\n" + interpreterProcess.getErrorMessage());
     }
-    // Marked before the call too, so a group idle past its threshold is not reclaimed while this
-    // paragraph waits for its first progress poll.
     markInterpreterGroupUsed();
     InterpreterResult result = interpreterProcess.callRemoteFunction(client -> {
           RemoteInterpreterResult remoteResult = client.interpret(
@@ -263,7 +258,6 @@ public class RemoteInterpreter extends Interpreter {
   }
 
   private void markInterpreterGroupUsedIfSucceeded(Object remoteResult) {
-    // PooledRemoteClient returns null when no client could be obtained
     if (remoteResult != null) {
       markInterpreterGroupUsed();
     }

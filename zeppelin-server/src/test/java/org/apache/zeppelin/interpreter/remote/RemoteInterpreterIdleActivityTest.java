@@ -36,10 +36,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/**
- * Only healthy interpreter activity may reset the idle clock of an interpreter group, otherwise
- * polling a dead or unreachable process keeps it from ever being reclaimed.
- */
 class RemoteInterpreterIdleActivityTest {
 
   private ManagedInterpreterGroup interpreterGroup;
