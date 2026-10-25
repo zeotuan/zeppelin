@@ -207,7 +207,6 @@ public class RemoteInterpreter extends Interpreter {
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("st:\n{}", st);
     }
-    markInterpreterGroupUsed();
 
     final FormType form = getFormType();
     RemoteInterpreterProcess interpreterProcess = null;
@@ -220,7 +219,8 @@ public class RemoteInterpreter extends Interpreter {
       return new InterpreterResult(InterpreterResult.Code.ERROR,
               "Interpreter process is not running\n" + interpreterProcess.getErrorMessage());
     }
-    return interpreterProcess.callRemoteFunction(client -> {
+    markInterpreterGroupUsed();
+    InterpreterResult result = interpreterProcess.callRemoteFunction(client -> {
           RemoteInterpreterResult remoteResult = client.interpret(
               sessionId, className, st, convert(context));
           Map<String, Object> remoteConfig = (Map<String, Object>) GSON.fromJson(
@@ -253,7 +253,14 @@ public class RemoteInterpreter extends Interpreter {
           return convert(remoteResult);
         }
     );
+    markInterpreterGroupUsedIfSucceeded(result);
+    return result;
+  }
 
+  private void markInterpreterGroupUsedIfSucceeded(Object remoteResult) {
+    if (remoteResult != null) {
+      markInterpreterGroupUsed();
+    }
   }
 
   @Override
@@ -306,15 +313,16 @@ public class RemoteInterpreter extends Interpreter {
       LOGGER.warn("getProgress is called when RemoterInterpreter is not opened for {}", className);
       return 0;
     }
-    markInterpreterGroupUsed();
     RemoteInterpreterProcess interpreterProcess = null;
     try {
       interpreterProcess = getOrCreateInterpreterProcess();
     } catch (IOException e) {
       throw new InterpreterException(e);
     }
-    return interpreterProcess.callRemoteFunction(client ->
+    Integer progress = interpreterProcess.callRemoteFunction(client ->
             client.getProgress(sessionId, className, convert(context)));
+    markInterpreterGroupUsedIfSucceeded(progress);
+    return progress;
   }
 
 
@@ -340,16 +348,16 @@ public class RemoteInterpreter extends Interpreter {
       LOGGER.warn("getStatus is called when RemoteInterpreter is not opened for {}", className);
       return Job.Status.UNKNOWN.name();
     }
-    markInterpreterGroupUsed();
     RemoteInterpreterProcess interpreterProcess = null;
     try {
       interpreterProcess = getOrCreateInterpreterProcess();
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-    return interpreterProcess.callRemoteFunction(client -> {
-      return client.getStatus(sessionId, jobId);
-    });
+    String status = interpreterProcess.callRemoteFunction(client ->
+        client.getStatus(sessionId, jobId));
+    markInterpreterGroupUsedIfSucceeded(status);
+    return status;
   }
 
 
